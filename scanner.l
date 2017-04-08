@@ -4,12 +4,13 @@ digit [0-9]
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "y.tab.h"
+int yywrap(void);
 int yylineno=1;
-int scopestack[100],c=0,top=-1;
+int count = 0;
+int stack[100],top=-1;
 char idname[10000];
-void yyerror(char*);
-extern FILE *yyin;
 %}
 
 %%
@@ -17,9 +18,9 @@ extern FILE *yyin;
 [ \t]	;
 [\n]	{ yylineno = yylineno+1;}
 	/* Keywords */
-"int"	{ printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return INT;}
+"int"	{ printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);yylval=atoi(yytext);return INT;}
 "unsigned int"	{ printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return UINT;}
-"float"			{ printf("LineNum: %d Type: KEYWORD Token:%s\n",yylineno,yytext);return FLOAT;}
+"float"			{ printf("LineNum: %d Type: KEYWORD Token:%s\n",yylineno,yytext);yylval=atoi(yytext);return FLOAT;}
 "main"		{ printf("LineNum: %d Type: KEYWORD Token:%s\n",yylineno,yytext);return MAIN;}
 "char"	{ printf("LineNum: %d Type: KEYWORD Token:%s\n",yylineno,yytext);return CHAR;}
 "for"	{ printf("LineNum: %d Type: KEYWORD Token:%s\n",yylineno,yytext);return FOR;}
@@ -34,20 +35,19 @@ extern FILE *yyin;
 "struct"	{printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return STRUCT;}
 "printf"	{printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return PRINTF;}
 "scanf"		{printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return SCANF;}
-"return"	{printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return RETURN;}
-
+"return"	{printf("LineNum: %d Type: KEYWORD Token: %s\n",yylineno,yytext);return RETURN;}	
 ^"#include".*	;
 
 	/*Identifiers*/
-{alphabet}({alphabet}|{digit})*	{printf("LineNum: %d Type: IDENTIFIER Token: %s\n",yylineno,yytext);return ID;}
+{alphabet}({alphabet}|{digit})*	{printf("LineNum: %d Type: IDENTIFIER Token: %s\n",yylineno,yytext);strcpy(idname,yytext);return ID;}
 
 	/*Integer Literal*/
 {digit}+	{printf("LineNum: %d Type: INT LITERAL Token: %s\n",yylineno,yytext);yylval=atoi(yytext);return DIG;}	
 ({digit}*\.{digit}+) {printf("LineNum: %d Type: FLOAT LITERAL Token: %s\n",yylineno,yytext);yylval=atoi(yytext);return REAL;}
 	
 	/*Special Characters*/
-"{"     {printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);c++;top++;scopestack[top]=c;return LBRACE;}
-"}"		{printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);top--;return RBRACE;}
+"{"     {printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);count++;top++;stack[top]=count;return LBRACE;}
+"}"		{printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);top--;count--;return RBRACE;}
 "["		{printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);return LSQ;}
 "]"		{printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);return RSQ;}
 ";"		{printf("LineNum: %d Type: SPECIAL CHARACTER Token: %s\n",yylineno,yytext);return SEMICOLON;}
@@ -79,6 +79,7 @@ extern FILE *yyin;
 \/\/.*	;
 \/\*(.*\n)*.*\*\/	;
 \"([^"])*\"		{printf("LineNum: %d Type: STRING Token: %s\n",yylineno,yytext);return STRING;}
+.			{printf("Illegal token\n");}
 %%
 
 int yywrap(void)

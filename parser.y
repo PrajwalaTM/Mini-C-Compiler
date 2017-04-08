@@ -1,18 +1,30 @@
 %{
-#include <bits/stdc++.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 #include <stdlib.h>
-#include "symboltable.cpp"
-extern "C" {
-		int yylex(void);
-		void yyerror(char *);
-	}
+int yylex(void);	
+void yyerror(char*);
 extern char idname[10000];
-extern int c;
-extern int scopestack[100],top;
+extern int stack[100],top,yylineno;
 extern FILE *yyin;
+
+void checkScope();
+int hash_lookup_scope(char *);
+void display_hash();
+void reset_hash();
+#define SIZE 1000
+void insert_hash(char *,int,int,int);
+struct DataItem 
+{
+  	char* text;   
+  	int scope;
+	int type;
+	int arraysize;
+};
+
+struct DataItem* hashArray[SIZE]; 
+struct DataItem* item;
+
 %}
 
 %token INT UINT FLOAT CHAR STRING ID DIG REAL
@@ -29,16 +41,29 @@ extern FILE *yyin;
 %left DAND DOR
 %right ASSIGN
 %left ELSE
-%start mainfunction
+%start program
 %%
 
+program: 	structstatement st functionstatement mainfunction
+			;
+st:	
+	SEMICOLON
+	|
+	;
+structstatement: 
+				STRUCT ID statements
+				|
+				;
 mainfunction:
 			INT MAIN LPAREN RPAREN statements
 			| VOID MAIN LPAREN RPAREN statements
+			|
 			;
 statements:
-			LBRACE statementlist RBRACE
+			LBRACE statementlist RBRACE 
 			;
+
+
 statementlist:
 			statementlist statement
 			| statement
@@ -65,8 +90,6 @@ expression:
 			| REAL
 			| identifier
 			| identifier ASSIGN expression
-			| arrayindex
-			| arrayindex ASSIGN expression
 			| expression ADD expression
 			| expression SUB expression
 			| expression MUL expression
@@ -99,41 +122,55 @@ elsestatement :
 				;
 identifier:
 			ID
+			{checkScope();}
 			;
-arrayindex :
-			TYPE LSQ expression RSQ
-			;
-TYPE :
-		INT
-		| FLOAT
-		| UINT
-		;
 
+functionstatement: 
+				INT ID LPAREN arglist RPAREN statements
+				|
+				FLOAT ID LPAREN arglist RPAREN statements
+				|
+				VOID ID LPAREN arglist RPAREN statements
+				;
+arglist:
+		arg COMMA arg 
+		;
+arg:
+	INT ID
+	|
+	FLOAT ID
+	;
 declarationintstub:
 				ID
 				{
-				insert("y",INT,scopestack[top],0);
+				 insert_hash(idname,stack[top],INT,0);
 				}
-				| decarrayindex
+				| decarrayindexint 
 				| ID ASSIGN expression
 				{
-				insert("x",INT,scopestack[top],4);
+				insert_hash(idname,stack[top],INT,0);
 				}
 				;
 
 declarationfloatstub:
 				ID
-				{
-				insert(idname,FLOAT,scopestack[top],0.0);
-				}
-				| decarrayindex
+				 {insert_hash(idname,stack[top],FLOAT,0);}
+				| decarrayindexfloat 
 				| ID ASSIGN expression
 				{
-				insert(idname,FLOAT,scopestack[top],$3);
+				insert_hash(idname,stack[top],FLOAT,0);
 				}
 				;
 
-decarrayindex : ID LSQ DIG RSQ
+decarrayindexint : ID LSQ DIG RSQ
+				{
+				insert_hash(idname,stack[top],INT,yylval);
+				}
+				;
+decarrayindexfloat : ID LSQ DIG RSQ
+				{
+				insert_hash(idname,stack[top],FLOAT,yylval);
+				}
 				;
 
 declarationlistint:
@@ -152,13 +189,120 @@ declarationstatement:
 					;
 
 %%
+
+int i;
+
+
+int hashCode(char* key) 
+{
+   unsigned int i,hash=7;
+   for(i=0;i<strlen(key);++i)
+   {
+       hash=hash*31+key[i];
+   }
+   return hash % SIZE;
+}
+
+
+void insert_hash(char* text,int scope,int type,int arraysize) 
+{
+
+  
+   int hashIndex = hashCode(text);
+
+  
+
+   while(hashArray[hashIndex] != NULL) 
+   {
+      if (strcmp(hashArray[hashIndex]->text,text) == 0 )
+		{		
+		if(hashArray[hashIndex]->scope==stack[top])
+		{
+		printf("Line:%d ERROR: Multiple declarations are not allowed.\n",yylineno);
+		return;
+		}
+		}
+      
+      ++hashIndex;
+		
+      
+      hashIndex %= SIZE;
+   }
+   
+   int i;
+   int len= strlen(text);
+   hashArray[hashIndex] = (struct DataItem*)malloc(sizeof(struct DataItem));
+   hashArray[hashIndex]-> scope = scope;
+   hashArray[hashIndex]-> type = type;
+   hashArray[hashIndex]-> arraysize= arraysize;
+   hashArray[hashIndex]-> text = (char *)malloc(len*sizeof(char));
+   strcpy(hashArray[hashIndex]->text,text);
+}
+
+
+void display_hash() 
+{
+   int i = 0;
+	printf("Symbol Name\tScope\t\tType\t     Arraysize\n------------------------------------------------------\n");	
+   for(i = 0; i<SIZE; i++) 
+   {
+      if(hashArray[i] != NULL)
+	printf("%s\t\t%d\t\t%d\t\t%d\n",hashArray[i]->text,hashArray[i]->scope,hashArray[i]->type,hashArray[i]->arraysize);         
+	
+      
+   }
+	
+   printf("\n");
+}
+
+void reset_hash()
+{
+int i;
+for (i=0;i<SIZE;i++)
+	hashArray[i] = NULL;
+}
+
+int hash_lookup_scope(char * key)
+{
+int hashIndex = hashCode(key);
+while (hashArray[hashIndex]!=NULL)
+	{
+	if (strcmp(hashArray[hashIndex]->text,key)== 0 )
+		{
+		return hashArray[hashIndex]->scope;
+		}
+	hashIndex ++;
+	hashIndex %= SIZE;	
+	}
+return -1;
+}
+void checkScope()
+{
+int varscope = hash_lookup_scope(idname);
+//printf("Scope of %s is %d\n",idname,varscope);
+int i;
+int flag = 0;
+if (top<0) printf("Line:%d ERROR:This should never happen.\n",yylineno);
+for (i=0;i<=top;i++)
+	{
+	if (varscope == stack[i])
+		{		
+		flag=1;
+		break;
+		}
+	}
+if (!flag)
+	printf("Line:%d ERROR:Scope Error\n",yylineno);
+}
 void yyerror(char* s){
 	fprintf(stderr,"%s",s);
 }
 int main(int argc, char *argv[])
 {
 	yyin = fopen(argv[1],"r");
+	reset_hash();
 	yyparse();
+	display_hash();
 	fclose(yyin); 
 }
 
